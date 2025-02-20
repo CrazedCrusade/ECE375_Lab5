@@ -54,8 +54,8 @@
 
 
 
-.def	leftCount = r22			; Left Counter
-.def	rightCount = r23		; Right Counter
+.def	leftCount = r23			; Left Counter
+.def	rightCount = r24		; Right Counter
 
 
 
@@ -87,12 +87,15 @@
 ;***********************************************************
 .org	$0000					; Beginning of IVs
 		rjmp 	INIT			; Reset interrupt
+; INT0
 .org $0002
 		rcall HitRight
 		reti
+; INT1
 .org $0004
 		rcall HitLeft
 		reti
+; INT3
 .org $0008
 		rcall ClearCount
 		reti
@@ -191,12 +194,12 @@ FUNC:							; Begin a function with a label
 DisplayOnLCD:
 		rcall LCDCLR
 		rcall FLSH_STR_TO_SRAM
-		mov mpr, r22		;move Left counter to mpr
+		mov mpr, r23		;move Left counter to mpr
 		ldi XL, low(Line2Pt1)
 		ldi XH, High(Line2Pt1)
 		rcall Bin2ASCII
 
-		mov mpr, r23		;move Left counter to mpr
+		mov mpr, r24		;move Left counter to mpr
 		ldi XL, low(Line2Pt2)
 		ldi XH, High(Line2Pt2)
 		rcall Bin2ASCII
@@ -317,6 +320,7 @@ HitLeft:
 		out		SREG, mpr	;
 		pop		waitcnt		; Restore wait register
 		pop		mpr		; Restore mpr
+		
 
 		rcall	DisplayONLCD
 		ldi		mpr, 0b0000_1011
@@ -352,9 +356,15 @@ ILoop:	dec		ilcnt			; decrement ilcnt
 		ret				; Return from subroutine
 
 
-
+;----------------------------------------------------------------
+; Sub:	ClearCount
+; Desc:	Resets the counts to zero on the display for Right/Left
+;----------------------------------------------------------------
 ClearCount:
-
+	; Clear the Right and left counter registers:
+	clr		leftCount
+	clr		rightCount
+	rcall	DisplayONLCD
 	ret
 
 
