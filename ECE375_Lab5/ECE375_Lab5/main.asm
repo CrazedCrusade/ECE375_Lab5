@@ -87,17 +87,17 @@
 ;***********************************************************
 .org	$0000					; Beginning of IVs
 		rjmp 	INIT			; Reset interrupt
-; INT0
+; INT0 (falling edge triggered)
 .org $0002
-		rcall HitRight
+		rcall HitRight //PORTD0 triggered
 		reti
-; INT1
+; INT1 (falling edge triggered)
 .org $0004
-		rcall HitLeft
+		rcall HitLeft //PORTD1 triggered
 		reti
-; INT3
+; INT3 (falling edge triggered)
 .org $0008
-		rcall ClearCount
+		rcall ClearCount //PORTD3 triggered
 		reti
 		; Set up interrupt vectors for any interrupts being used
 
@@ -130,8 +130,13 @@ INIT:							; The initialization routine
 		ldi		mpr, $FF		; Initialize Port D Data Register
 		out		PORTD, mpr		; so all Port D inputs are Tri-State
 
+		// Initialize the LCD
 		rcall LCDInit
+
+		//load string from memory to SRAM
 		rcall FLSH_STR_TO_SRAM
+
+		//Write to the screen from loaded memory
 		rcall LCDWrite
 
 
@@ -155,7 +160,7 @@ INIT:							; The initialization routine
 ;***********************************************************
 MAIN:							; The Main program
 
-		; TODO
+		; TODO (nothing)
 
 		rjmp	MAIN			; Create an infinite while loop to signify the
 								; end of the program.
@@ -170,25 +175,12 @@ MAIN:							; The Main program
 ;	interrupt, and maybe a wait function
 ;------------------------------------------------------------
 
-;-----------------------------------------------------------
-; Func: Template function header
-; Desc: Cut and paste this and fill in the info at the
-;		beginning of your functions
-;-----------------------------------------------------------
-FUNC:							; Begin a function with a label
 
-		; Save variable by pushing them to the stack
-
-		; Execute the function here
-
-		; Restore variable by popping them from the stack in reverse order
-
-		ret						; End a function with RET
 
 
 ;-----------------------------------------------------------
-; Func: Function To Display on both Counters
-; Desc: 
+; Func: DisplayOnLCD
+; Desc: Function To Display on both Counters
 
 ;-----------------------------------------------------------
 DisplayOnLCD:
@@ -280,7 +272,10 @@ HitRight:
 		pop		mpr		; Restore mpr
 		inc		RightCount;
 
+		; Display change to rightCount
 		rcall	DisplayONLCD
+
+		; mask the bits to EIFR
 		ldi		mpr, 0b0000_1011
 		out		EIFR, mpr
 		ret				; Return from subroutine
@@ -321,9 +316,11 @@ HitLeft:
 		pop		waitcnt		; Restore wait register
 		pop		mpr		; Restore mpr
 		
-
+		; Display the update to leftCount
 		rcall	DisplayONLCD
-		ldi		mpr, 0b0000_1011
+
+		; mask the bits to EIFR
+		ldi		mpr, 0b0000_1011 
 		out		EIFR, mpr
 		ret				; Return from subroutine
 
@@ -362,9 +359,9 @@ ILoop:	dec		ilcnt			; decrement ilcnt
 ;----------------------------------------------------------------
 ClearCount:
 	; Clear the Right and left counter registers:
-	clr		leftCount
-	clr		rightCount
-	rcall	DisplayONLCD
+	clr		leftCount		; Left counter clear
+	clr		rightCount		; Right counter clear
+	rcall	DisplayONLCD	; display the change
 	ret
 
 
@@ -381,9 +378,10 @@ STRING_END: ; Address Name for end of string location in flash
 
 .dseg 
 .org $0100
+//Top string: This will be the same as STRIN_BEG
 Line1:
 	.byte 16
-
+//Split the bottom string in half for counters
 Line2Pt1: 
 	.byte 8
 Line2Pt2: 
