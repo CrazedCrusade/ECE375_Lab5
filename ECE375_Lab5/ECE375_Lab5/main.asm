@@ -37,9 +37,45 @@
 ;*	Internal Register Definitions and Constants
 ;***********************************************************
 .def	mpr = r16				; Multipurpose register
+.def	i = r25
 
 .equ	WskrR = 0				; Right Whisker Input Bit
 .equ	WskrL = 1				; Left Whisker Input Bit
+
+
+.equ	buttonLeft = 4				; Input bit for PD4
+.equ	buttonRight = 5				; Input bit for PD5
+
+
+
+.def	waitcnt = r17				; Wait Loop Counter
+.def	ilcnt = r18				; Inner Loop Counter
+.def	olcnt = r19				; Outer Loop Counter
+
+
+
+.def	leftCount = r22			; Left Counter
+.def	rightCount = r23		; Right Counter
+
+
+
+.equ	WTime = 50				; Time to wait in wait loop
+.equ	BTime = 50				; Time to backup?
+
+.equ	EngEnR = 5				; Right Engine Enable Bit
+.equ	EngEnL = 6				; Left Engine Enable Bit
+.equ	EngDirR = 4				; Right Engine Direction Bit
+.equ	EngDirL = 7				; Left Engine Direction Bit
+
+;/////////////////////////////////////////////////////////////
+;These macros are the values to make the TekBot Move.
+;/////////////////////////////////////////////////////////////
+
+.equ	MovFwd = (1<<EngDirR|1<<EngDirL)	; Move Forward Command
+.equ	MovBck = $00				; Move Backward Command
+.equ	TurnR = (1<<EngDirL)			; Turn Right Command
+.equ	TurnL = (1<<EngDirR)			; Turn Left Command
+.equ	Halt = (1<<EngEnR|1<<EngEnL)		; Halt Command
 
 ;***********************************************************
 ;*	Start of Code Segment
@@ -51,7 +87,15 @@
 ;***********************************************************
 .org	$0000					; Beginning of IVs
 		rjmp 	INIT			; Reset interrupt
-
+.org $0002
+		rcall HitRight
+		reti
+.org $0004
+		rcall HitLeft
+		reti
+.org $0008
+		rcall ClearCount
+		reti
 		; Set up interrupt vectors for any interrupts being used
 
 		; This is just an example:
@@ -83,14 +127,25 @@ INIT:							; The initialization routine
 		ldi		mpr, $FF		; Initialize Port D Data Register
 		out		PORTD, mpr		; so all Port D inputs are Tri-State
 
+		rcall LCDInit
+		rcall FLSH_STR_TO_SRAM
+		rcall LCDWrite
+
+
+
+
 		; Initialize external interrupts
 			; Set the Interrupt Sense Control to falling edge
+		ldi mpr, 0b1000_1010
+		sts EICRA, mpr
 
 		; Configure the External Interrupt Mask
-
+		ldi mpr, 0b0000_1011
+		out EIMSK, mpr		; set the mask
 		; Turn on interrupts
-			
-			; NOTE: This must be the last thing to do in the INIT function
+		sei ; set interrupt
+
+		; NOTE: This must be the last thing to do in the INIT function
 
 ;***********************************************************
 ;*	Main Program
@@ -127,16 +182,204 @@ FUNC:							; Begin a function with a label
 
 		ret						; End a function with RET
 
+
+;-----------------------------------------------------------
+; Func: Function To Display on both Counters
+; Desc: 
+
+;-----------------------------------------------------------
+DisplayOnLCD:
+		rcall LCDCLR
+		rcall FLSH_STR_TO_SRAM
+		mov mpr, r22		;move Left counter to mpr
+		ldi XL, low(Line2Pt1)
+		ldi XH, High(Line2Pt1)
+		rcall Bin2ASCII
+
+		mov mpr, r23		;move Left counter to mpr
+		ldi XL, low(Line2Pt2)
+		ldi XH, High(Line2Pt2)
+		rcall Bin2ASCII
+		rcall LCDWrite
+
+		ret
+
+
+;-----------------------------------------------------------
+; Func: FLSH_STR_TO_SRAM
+; Desc: This function stores string in flash to the correct
+;		locations in SRAM for the LCDDriver by first pushing
+;		a character from the string onto the stack, then 
+;		utilizing a helper function to store that character
+;		from the stack to the correct SRAM location. Then 
+;		this function loops until all characters from the 
+;		string are in SRAM in order. 
+; limits: 
+;		1) Assumes a 32 character string, 16 characters per
+;			line is stored between STRING_BEG and STRING_END
+;		2) Assumes that characters are in the correct order
+;			in the flash memory (as typed after .db).
+;-----------------------------------------------------------						
+FLSH_STR_TO_SRAM:
+    ; Initialize Z register to point to STRING_BEG
+    ldi     ZL, low(STRING_BEG << 1)      ; Load low byte of address into ZL
+    ldi     ZH, high(STRING_BEG << 1)     ; Load high byte of address into ZH
+    ldi		XH, $01		; Inital Value of X
+	ldi		XL, $00		; inital Value of X
+
+	ldi		i, 32		; Starting i for a loop counter
+
+FLSH_LOOP:
+    ; Load the character from flash into the register
+    lpm     r15, Z+                   ; Load byte from address in Z to a GPR (FLASH-->GPR). Then increment Z to next Flash address
+	st		X+, r15						; Load GPR value to SRAM location (GPR-->SRAM). Then increment X to the next SRAM location
+	dec		i							; Decrement the loop counter
+	brne	FLSH_LOOP					; Continue the loop so long as i is positive
+	ret ; End of function, String successfully stored to SRAM
+
+
+
+
+
+
+
+
+;----------------------------------------------------------------
+; Sub:	HitRight
+; Desc:	Handles functionality of the TekBot when the right whisker
+;		is triggered.
+;----------------------------------------------------------------
+HitRight:
+		push	mpr			; Save mpr register
+		push	waitcnt			; Save wait register
+		in		mpr, SREG	; Save program state
+		push	mpr			;
+
+		; Move Backwards for a second
+		ldi		mpr, MovBck	; Load Move Backward command
+		out		PORTB, mpr	; Send command to port
+		ldi		waitcnt, BTime	; Wait for 2 second
+		rcall	Wait			; Call wait function
+
+		; Turn left for a second
+		ldi		mpr, TurnL	; Load Turn Left Command
+		out		PORTB, mpr	; Send command to port
+		ldi		waitcnt, WTime	; Wait for 1 second
+		rcall	Wait			; Call wait function
+
+		; Move Forward again
+		ldi		mpr, MovFwd	; Load Move Forward command
+		out		PORTB, mpr	; Send command to port
+
+		pop		mpr		; Restore program state
+		out		SREG, mpr	;
+		pop		waitcnt		; Restore wait register
+		pop		mpr		; Restore mpr
+		inc		RightCount;
+
+		rcall	DisplayONLCD
+		ldi		mpr, 0b0000_1011
+		out		EIFR, mpr
+		ret				; Return from subroutine
+
+
+
+;----------------------------------------------------------------
+; Sub:	HitLeft
+; Desc:	Handles functionality of the TekBot when the left whisker
+;		is triggered.
+;----------------------------------------------------------------
+HitLeft:
+		push	mpr			; Save mpr register
+		push	waitcnt			; Save wait register
+		in		mpr, SREG	; Save program state
+		push	mpr			;
+
+		; Move Backwards for a second
+		ldi		mpr, MovBck	; Load Move Backward command
+		out		PORTB, mpr	; Send command to port
+		ldi		waitcnt, BTime	; Wait for 2 second
+		rcall	Wait			; Call wait function
+
+		; Turn right for a second
+		ldi		mpr, TurnR	; Load Turn Left Command
+		out		PORTB, mpr	; Send command to port
+		ldi		waitcnt, WTime	; Wait for 1 second
+		rcall	Wait			; Call wait function
+
+		; Move Forward again
+		ldi		mpr, MovFwd	; Load Move Forward command
+		out		PORTB, mpr	; Send command to port
+		inc		leftCount;
+
+
+		pop		mpr		; Restore program state
+		out		SREG, mpr	;
+		pop		waitcnt		; Restore wait register
+		pop		mpr		; Restore mpr
+
+		rcall	DisplayONLCD
+		ldi		mpr, 0b0000_1011
+		out		EIFR, mpr
+		ret				; Return from subroutine
+
+
+;----------------------------------------------------------------
+; Sub:	Wait
+; Desc:	A wait loop that is 16 + 159975*waitcnt cycles or roughly
+;		waitcnt*10ms.  Just initialize wait for the specific amount
+;		of time in 10ms intervals. Here is the general eqaution
+;		for the number of clock cycles in the wait loop:
+;			(((((3*ilcnt)-1+4)*olcnt)-1+4)*waitcnt)-1+16
+;----------------------------------------------------------------
+Wait:
+		push	waitcnt			; Save wait register
+		push	ilcnt			; Save ilcnt register
+		push	olcnt			; Save olcnt register
+
+Loop:	ldi		olcnt, 224		; load olcnt register
+OLoop:	ldi		ilcnt, 237		; load ilcnt register
+ILoop:	dec		ilcnt			; decrement ilcnt
+		brne	ILoop			; Continue Inner Loop
+		dec		olcnt		; decrement olcnt
+		brne	OLoop			; Continue Outer Loop
+		dec		waitcnt		; Decrement wait
+		brne	Loop			; Continue Wait loop
+
+		pop		olcnt		; Restore olcnt register
+		pop		ilcnt		; Restore ilcnt register
+		pop		waitcnt		; Restore wait register
+		ret				; Return from subroutine
+
+
+
+ClearCount:
+
+	ret
+
+
 ;***********************************************************
 ;*	Stored Program Data
 ;***********************************************************
 ; Enter any stored data you might need here
 STRING_BEG:; Address Name for Beginning of string location in flash
 ; Each char stored as an Ascii equivalent Int
-.DB		"Right       Left"  ;Upper line	16 char
+.DB		"Left   |Right   "  ;Upper line	16 char
 STRING_COUNTER_VALS:
-.DB		"000          000"  ;Lower line	16 char
+.DB		"0      |0       "  ;Lower line	16 char
 STRING_END: ; Address Name for end of string location in flash
+
+.dseg 
+.org $0100
+Line1:
+	.byte 16
+
+Line2Pt1: 
+	.byte 8
+Line2Pt2: 
+	.byte 8
+
+
 
 ;***********************************************************
 ;*	Additional Program Includes
