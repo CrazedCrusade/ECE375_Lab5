@@ -54,8 +54,8 @@
 
 
 
-.def	leftCount = r23			; Left Counter
-.def	rightCount = r24		; Right Counter
+.def	leftCount = r22			; Left Counter
+.def	rightCount = r23		; Right Counter
 
 
 
@@ -94,8 +94,7 @@
 		rcall HitLeft
 		reti
 .org $0008
-		rcall CLEAR_COUNT
-
+		rcall ClearCount
 		reti
 		; Set up interrupt vectors for any interrupts being used
 
@@ -133,6 +132,8 @@ INIT:							; The initialization routine
 		rcall LCDWrite
 
 
+
+
 		; Initialize external interrupts
 			; Set the Interrupt Sense Control to falling edge
 		ldi mpr, 0b1000_1010
@@ -142,8 +143,8 @@ INIT:							; The initialization routine
 		ldi mpr, 0b0000_1011
 		out EIMSK, mpr		; set the mask
 		; Turn on interrupts
-
 		sei ; set interrupt
+
 		; NOTE: This must be the last thing to do in the INIT function
 
 ;***********************************************************
@@ -187,7 +188,7 @@ FUNC:							; Begin a function with a label
 ; Desc: 
 
 ;-----------------------------------------------------------
-DISPLAY_ON_LCD:
+DisplayOnLCD:
 		rcall LCDCLR
 		rcall FLSH_STR_TO_SRAM
 		mov mpr, r22		;move Left counter to mpr
@@ -276,7 +277,7 @@ HitRight:
 		pop		mpr		; Restore mpr
 		inc		RightCount;
 
-		rcall	DISPLAY_ON_LCD
+		rcall	DisplayONLCD
 		ldi		mpr, 0b0000_1011
 		out		EIFR, mpr
 		ret				; Return from subroutine
@@ -304,7 +305,7 @@ HitLeft:
 		ldi		mpr, TurnR	; Load Turn Left Command
 		out		PORTB, mpr	; Send command to port
 		ldi		waitcnt, WTime	; Wait for 1 second
-		rcall	WAIT			; Call wait function
+		rcall	Wait			; Call wait function
 
 		; Move Forward again
 		ldi		mpr, MovFwd	; Load Move Forward command
@@ -317,7 +318,7 @@ HitLeft:
 		pop		waitcnt		; Restore wait register
 		pop		mpr		; Restore mpr
 
-		rcall	DISPLAY_ON_LCD
+		rcall	DisplayONLCD
 		ldi		mpr, 0b0000_1011
 		out		EIFR, mpr
 		ret				; Return from subroutine
@@ -331,7 +332,7 @@ HitLeft:
 ;		for the number of clock cycles in the wait loop:
 ;			(((((3*ilcnt)-1+4)*olcnt)-1+4)*waitcnt)-1+16
 ;----------------------------------------------------------------
-WAIT:
+Wait:
 		push	waitcnt			; Save wait register
 		push	ilcnt			; Save ilcnt register
 		push	olcnt			; Save olcnt register
@@ -352,7 +353,7 @@ ILoop:	dec		ilcnt			; decrement ilcnt
 
 
 
-CLEAR_COUNT:
+ClearCount:
 
 	ret
 
